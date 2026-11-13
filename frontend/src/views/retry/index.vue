@@ -57,29 +57,34 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条异常重试管理记录</span>
+      <span v-if="message" class="ok-text">{{ message }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { request } from '@/api/client'
 
-type Row = Record<string, string | number | null>
+type Row = Record<string, any>
 
 const ENDPOINT = '/api/retry'
-const columns = ["规则编号", "异常类型", "重试上限", "退避策略", "冷却时间", "告警阈值", "降级方案", "是否启用"]
+const columns = ["规则编号", "异常类型", "关联告警", "告警状态", "可升级", "处理窗口", "升级次数", "是否启用"]
 const actions = ["提交校验", "启用规则", "停用规则"]
-const statuses = ["草稿", "待校验", "已启用", "已停用"]
-const stats = [{"label": "重试规则总数", "value": 0}, {"label": "待校验规则", "value": 0}, {"label": "已启用规则", "value": 0}]
+const filterFields = ["规则编号", "异常类型"]
 
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const message = ref('')
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
+const stats = computed(() => [
+  { label: '重试规则总数', value: total.value },
+  { label: '待校验规则', value: rows.value.filter((row) => row.status === '待校验').length },
+  { label: '可升级规则', value: rows.value.filter((row) => Boolean(row.可升级)).length },
+])
 
 function resetFilters() {
   filters.value = {}
@@ -96,14 +101,17 @@ function openCreate() {
 
 async function runAction(action: string, row: Row) {
   errorMessage.value = ''
+  message.value = ''
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
       body: JSON.stringify({ action }),
     })
-    if (!response.ok) {
-      throw new Error('异常重试管理动作未生效，请稍后重试')
+    const payload = await response.json().catch(() => ({ ok: false, message: '动作返回内容无法解析' }))
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message || '异常重试管理动作未生效，请稍后重试')
     }
+    message.value = payload.message ?? ''
     await reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '异常重试管理操作失败'

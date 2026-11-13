@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
 
@@ -22,10 +22,22 @@ class ActionResult(BaseModel):
 
 
 class EntryPayload(BaseModel):
-    """登记或修改一条业务记录时提交的字段集合。"""
+    """登记或修改一条业务记录时提交的字段集合。
+
+    兼容两种提交写法：前端习惯直接把动作放在顶层（``{"action": "启用规则"}``），
+    也支持包在 ``values`` 里的写法；动作本身仍然是业务字段，不写进记录。
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     values: dict[str, Any] = Field(default_factory=dict)
     remark: str | None = None
+
+    def merged(self) -> dict[str, Any]:
+        merged = dict(self.values)
+        for key, value in (self.model_extra or {}).items():
+            merged.setdefault(key, value)
+        return merged
 
 
 
